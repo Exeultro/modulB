@@ -3,6 +3,7 @@ const Canvas = {
     ctx: null,
     objects: [],
     currentTool: 'select',
+    boardId: null,
     
     // Временные данные для рисования
     isDrawing: false,
@@ -12,21 +13,21 @@ const Canvas = {
     
     // Выделенный объект
     selectedObject: null,
+    selectedObjectId: null,
 
-    init(canvasElement) {
-        console.log('Canvas init');
+    init(canvasElement, boardId, initialObjects = []) {
+        console.log('Canvas init for board:', boardId);
         
         this.canvas = canvasElement;
         this.ctx = this.canvas.getContext('2d');
+        this.boardId = boardId;
         
         // Размеры
         this.canvas.width = 1600;
         this.canvas.height = 900;
         
-        // ТЕСТОВЫЕ ОБЪЕКТЫ
-        this.objects = [
-            { type: 'rectangle', x: 100, y: 100, width: 50, height: 50, color: '#ff0000' },
-        ];
+        // Загружаем начальные объекты (из Board.data)
+        this.loadInitialObjects(initialObjects);
         
         // Обработчики событий мыши
         this.canvas.onmousedown = (e) => this.handleMouseDown(e);
@@ -40,30 +41,176 @@ const Canvas = {
         this.draw();
     },
 
+    // Загрузка начальных объектов (из ответа сервера)
+    loadInitialObjects(initialObjects) {
+        try {
+            console.log('Loading initial objects:', initialObjects);
+            
+            if (!initialObjects || initialObjects.length === 0) {
+                console.log('No objects to load');
+                this.objects = [];
+                return;
+            }
+            
+            this.objects = initialObjects.map(dbObj => {
+                // Парсим content если это строка
+                let content = dbObj.content;
+                if (typeof content === 'string') {
+                    try {
+                        content = JSON.parse(content);
+                    } catch (e) {
+                        console.error('Error parsing content:', e);
+                        content = {};
+                    }
+                }
+                
+                const canvasObj = {
+                    id: dbObj.id,
+                    type: dbObj.type,
+                    ...content,
+                    x: dbObj.position_x,
+                    y: dbObj.position_y,
+                    width: dbObj.width,
+                    height: dbObj.height,
+                    rotation: dbObj.rotation
+                };
+                
+                // Для изображений загружаем картинку
+                if (dbObj.type === 'image' && content.src) {
+                    const img = new Image();
+                    img.src = content.src;
+                    canvasObj.img = img;
+                }
+                
+                return canvasObj;
+            });
+            
+            console.log('Processed objects:', this.objects);
+            this.draw();
+        } catch (error) {
+            console.error('Error loading initial objects:', error);
+        }
+    },
+
+    // Сохранение нового объекта на сервер
+    async saveObject(object) {
+        if (!this.boardId) return null;
+        
+        try {
+            console.log('Saving object to board:', this.boardId, object);
+            
+            // Подготавливаем данные для БД
+            const dbObject = {
+                type: object.type,
+                content: this.prepareContent(object),
+                position_x: Math.round(object.x || 0),
+                position_y: Math.round(object.y || 0),
+                width: object.width || null,
+                height: object.height || null,
+                rotation: object.rotation || 0
+            };
+            
+            const response = await API.boards.createBoardObject(this.boardId, dbObject);
+            
+            if (response && response.object) {
+                object.id = response.object.id;
+                console.log('Object saved with ID:', object.id);
+            }
+            
+            return response;
+        } catch (error) {
+            console.error('Error saving object:', error);
+            return null;
+        }
+    },
+
+    // Обновление существующего объекта
+    async updateObject(object) {
+        if (!this.boardId || !object.id) return;
+        
+        try {
+            console.log('Updating object:', object.id);
+            
+            const dbObject = {
+                type: object.type,
+                content: this.prepareContent(object),
+                position_x: Math.round(object.x || 0),
+                position_y: Math.round(object.y || 0),
+                width: object.width || null,
+                height: object.height || null,
+                rotation: object.rotation || 0
+            };
+            
+            await API.boards.updateBoardObject(this.boardId, object.id, dbObject);
+        } catch (error) {
+            console.error('Error updating object:', error);
+        }
+    },
+
+    // Удаление объекта
+    async deleteObject(objectId) {
+        if (!this.boardId || !objectId) return;
+        
+        try {
+            console.log('Deleting object:', objectId);
+            await API.boards.deleteBoardObject(this.boardId, objectId);
+        } catch (error) {
+            console.error('Error deleting object:', error);
+        }
+    },
+
+    // Подготовка content для сохранения в JSONB
+    prepareContent(obj) {
+        const content = {};
+        
+        switch(obj.type) {
+            case 'rectangle':
+                content.color = obj.color;
+                break;
+            case 'circle':
+                content.color = obj.color;
+                content.radius = obj.radius;
+                break;
+            case 'line':
+                content.color = obj.color;
+                content.x1 = obj.x1;
+                content.y1 = obj.y1;
+                content.x2 = obj.x2;
+                content.y2 = obj.y2;
+                break;
+            case 'text':
+                content.text = obj.text;
+                content.color = obj.color;
+                content.fontSize = obj.fontSize;
+                break;
+            case 'image':
+                content.src = obj.src;
+                content.color = obj.color;
+                break;
+        }
+        
+        return content;
+    },
+
     handleMouseDown(e) {
         const rect = this.canvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
         
-        // Пересчет в координаты canvas
         const canvasX = (x / rect.width) * 1600;
         const canvasY = (y / rect.height) * 900;
         
         console.log('Mouse down:', canvasX, canvasY, 'Инструмент:', this.currentTool);
         
         if (this.currentTool === 'select') {
-            // Логика выделения
             this.selectObject(canvasX, canvasY);
         } else {
-            // Снимаем выделение при использовании другого инструмента
             this.selectedObject = null;
-            
-            // Начинаем рисование
+            this.selectedObjectId = null;
             this.isDrawing = true;
             this.startX = canvasX;
             this.startY = canvasY;
             
-            // Для линий и других инструментов, где нужен временный объект
             if (this.currentTool === 'line') {
                 this.tempObject = {
                     type: 'line',
@@ -91,30 +238,189 @@ const Canvas = {
                     color: '#8b5cf6'
                 };
             } else if (this.currentTool === 'image') {
-                // Загрузка изображения
                 this.loadImage(canvasX, canvasY);
                 this.isDrawing = false;
             } else if (this.currentTool === 'text') {
-                // Для текста
                 const text = prompt('Введите текст:', 'Текст');
                 if (text) {
-                    this.objects.push({
+                    const newObject = {
                         type: 'text',
                         x: canvasX,
                         y: canvasY,
                         text: text,
                         color: '#8b5cf6',
                         fontSize: 20
+                    };
+                    
+                    // Сохраняем на сервер и добавляем в массив
+                    this.saveObject(newObject).then(() => {
+                        this.objects.push(newObject);
+                        this.draw();
                     });
                 }
                 this.isDrawing = false;
-                this.draw();
             }
         }
     },
 
+    handleMouseMove(e) {
+        if (!this.isDrawing || !this.tempObject) return;
+        
+        const rect = this.canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
+        const canvasX = (x / rect.width) * 1600;
+        const canvasY = (y / rect.height) * 900;
+        
+        if (this.currentTool === 'line') {
+            this.tempObject.x2 = canvasX;
+            this.tempObject.y2 = canvasY;
+        } else if (this.currentTool === 'circle') {
+            const dx = canvasX - this.startX;
+            const dy = canvasY - this.startY;
+            this.tempObject.radius = Math.sqrt(dx * dx + dy * dy);
+        } else if (this.currentTool === 'rectangle') {
+            this.tempObject.width = canvasX - this.startX;
+            this.tempObject.height = canvasY - this.startY;
+            
+            if (this.tempObject.width < 0) {
+                this.tempObject.x = canvasX;
+                this.tempObject.width = Math.abs(this.tempObject.width);
+            }
+            if (this.tempObject.height < 0) {
+                this.tempObject.y = canvasY;
+                this.tempObject.height = Math.abs(this.tempObject.height);
+            }
+        }
+        
+        this.draw();
+    },
+
+    async handleMouseUp(e) {
+        if (!this.isDrawing) return;
+        
+        console.log('Mouse up, добавление объекта:', this.tempObject);
+        
+        if (this.tempObject) {
+            const newObject = {...this.tempObject};
+            
+            // Сохраняем на сервер и добавляем в массив
+            await this.saveObject(newObject);
+            this.objects.push(newObject);
+            this.tempObject = null;
+        }
+        
+        this.isDrawing = false;
+        this.draw();
+    },
+
+    handleMouseLeave() {
+        if (this.isDrawing) {
+            this.isDrawing = false;
+            this.tempObject = null;
+            this.draw();
+        }
+    },
+
+    async handleKeyDown(e) {
+        if ((e.key === 'Delete' || e.key === 'Backspace') && this.selectedObject) {
+            e.preventDefault();
+            
+            // Удаляем с сервера
+            if (this.selectedObject.id) {
+                await this.deleteObject(this.selectedObject.id);
+            }
+            
+            // Удаляем из массива
+            const index = this.objects.indexOf(this.selectedObject);
+            if (index > -1) {
+                this.objects.splice(index, 1);
+            }
+            
+            this.selectedObject = null;
+            this.selectedObjectId = null;
+            this.draw();
+        }
+    },
+
+    selectObject(x, y) {
+        this.selectedObject = null;
+        this.selectedObjectId = null;
+        
+        // Ищем объект под курсором (с конца)
+        for (let i = this.objects.length - 1; i >= 0; i--) {
+            const obj = this.objects[i];
+            
+            let hit = false;
+            
+            switch(obj.type) {
+                case 'rectangle':
+                case 'image':
+                    hit = x >= obj.x && x <= obj.x + (obj.width || 50) && 
+                          y >= obj.y && y <= obj.y + (obj.height || 50);
+                    break;
+                    
+                case 'circle':
+                    const dx = x - obj.x;
+                    const dy = y - obj.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    hit = distance <= (obj.radius || 25);
+                    break;
+                    
+                case 'line':
+                    const lineX1 = obj.x1, lineY1 = obj.y1;
+                    const lineX2 = obj.x2, lineY2 = obj.y2;
+                    
+                    const A = x - lineX1;
+                    const B = y - lineY1;
+                    const C = lineX2 - lineX1;
+                    const D = lineY2 - lineY1;
+                    
+                    const dot = A * C + B * D;
+                    const len_sq = C * C + D * D;
+                    let param = len_sq === 0 ? 0 : dot / len_sq;
+                    
+                    let xx, yy;
+                    
+                    if (param < 0) {
+                        xx = lineX1;
+                        yy = lineY1;
+                    } else if (param > 1) {
+                        xx = lineX2;
+                        yy = lineY2;
+                    } else {
+                        xx = lineX1 + param * C;
+                        yy = lineY1 + param * D;
+                    }
+                    
+                    const distanceToLine = Math.sqrt((x - xx) * (x - xx) + (y - yy) * (y - yy));
+                    hit = distanceToLine < 10;
+                    break;
+                    
+                case 'text':
+                    const textWidth = obj.text.length * (obj.fontSize || 20) * 0.6;
+                    const textHeight = (obj.fontSize || 20);
+                    hit = x >= obj.x && x <= obj.x + textWidth && 
+                          y >= obj.y - textHeight && y <= obj.y;
+                    break;
+            }
+            
+            if (hit) {
+                this.selectedObject = obj;
+                this.selectedObjectId = obj.id;
+                console.log('Объект выбран:', obj);
+                this.draw();
+                return;
+            }
+        }
+        
+        console.log('Ничего не выбрано');
+        this.draw();
+    },
+
     loadImage(x, y) {
-        // Создаем кастомный диалог для загрузки изображения
+        // Модальное окно для загрузки изображения
         const modal = document.createElement('div');
         modal.style.cssText = `
             position: fixed;
@@ -185,7 +491,6 @@ const Canvas = {
         
         document.body.appendChild(modal);
         
-        // Обработчики
         document.getElementById('cancelImageBtn').onclick = () => {
             document.body.removeChild(modal);
         };
@@ -196,7 +501,6 @@ const Canvas = {
             const sizeSelect = document.getElementById('imageSizeSelect');
             
             const processImage = (img) => {
-                // Определяем размер
                 let width, height;
                 const selectedSize = sizeSelect.value;
                 
@@ -210,44 +514,47 @@ const Canvas = {
                     width = 300;
                     height = (img.height / img.width) * width;
                 } else {
-                    // Оригинальный размер, но не больше 400px
                     width = Math.min(400, img.width);
                     height = (img.height / img.width) * width;
                 }
                 
-                this.objects.push({
+                const newObject = {
                     type: 'image',
-                    x: x - width/2,
-                    y: y - height/2,
-                    width: width,
-                    height: height,
+                    x: Math.round(x - width/2),
+                    y: Math.round(y - height/2),
+                    width: Math.round(width),
+                    height: Math.round(height),
                     src: img.src,
-                    img: img
+                    img: img,
+                    color: '#8b5cf6'
+                };
+                
+                // Сохраняем на сервер и добавляем в массив
+                this.saveObject(newObject).then(() => {
+                    this.objects.push(newObject);
+                    this.draw();
                 });
                 
-                this.draw();
                 document.body.removeChild(modal);
             };
             
             if (fileInput.files.length > 0) {
-                // Загрузка из файла
                 const file = fileInput.files[0];
                 const reader = new FileReader();
                 
                 reader.onload = (event) => {
                     const img = new Image();
-                    img.onload = () => processImage(img);
+                    img.onload = () => processImage.call(this, img);
                     img.src = event.target.result;
                 };
                 
                 reader.readAsDataURL(file);
                 
             } else if (urlInput.value) {
-                // Загрузка по URL
                 const img = new Image();
                 img.crossOrigin = 'anonymous';
                 
-                img.onload = () => processImage(img);
+                img.onload = () => processImage.call(this, img);
                 img.onerror = () => {
                     alert('Не удалось загрузить изображение по указанному URL');
                 };
@@ -260,175 +567,20 @@ const Canvas = {
         };
     },
 
-    handleMouseMove(e) {
-        if (!this.isDrawing || !this.tempObject) return;
-        
-        const rect = this.canvas.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-        
-        // Пересчет в координаты canvas
-        const canvasX = (x / rect.width) * 1600;
-        const canvasY = (y / rect.height) * 900;
-        
-        // Обновляем временный объект в зависимости от инструмента
-        if (this.currentTool === 'line') {
-            this.tempObject.x2 = canvasX;
-            this.tempObject.y2 = canvasY;
-        } else if (this.currentTool === 'circle') {
-            const dx = canvasX - this.startX;
-            const dy = canvasY - this.startY;
-            this.tempObject.radius = Math.sqrt(dx * dx + dy * dy);
-        } else if (this.currentTool === 'rectangle') {
-            this.tempObject.width = canvasX - this.startX;
-            this.tempObject.height = canvasY - this.startY;
-            
-            // Корректируем позицию для отрицательных размеров
-            if (this.tempObject.width < 0) {
-                this.tempObject.x = canvasX;
-                this.tempObject.width = Math.abs(this.tempObject.width);
-            }
-            if (this.tempObject.height < 0) {
-                this.tempObject.y = canvasY;
-                this.tempObject.height = Math.abs(this.tempObject.height);
-            }
-        }
-        
-        this.draw();
-    },
-
-    handleMouseUp(e) {
-        if (!this.isDrawing) return;
-        
-        console.log('Mouse up, добавление объекта:', this.tempObject);
-        
-        // Добавляем временный объект в постоянные
-        if (this.tempObject) {
-            this.objects.push({...this.tempObject});
-            this.tempObject = null;
-        }
-        
-        this.isDrawing = false;
-        this.draw();
-    },
-
-    handleMouseLeave() {
-        // Отменяем рисование при выходе мыши за пределы canvas
-        if (this.isDrawing) {
-            this.isDrawing = false;
-            this.tempObject = null;
-            this.draw();
-        }
-    },
-
-    handleKeyDown(e) {
-        // Удаление по клавише Delete или Backspace
-        if ((e.key === 'Delete' || e.key === 'Backspace') && this.selectedObject) {
-            e.preventDefault(); // Предотвращаем навигацию браузера
-            this.deleteSelectedObject();
-        }
-    },
-
-    selectObject(x, y) {
-        // Сбрасываем предыдущее выделение
-        this.selectedObject = null;
-        
-        // Ищем объект под курсором (с конца, чтобы выделять верхние)
-        for (let i = this.objects.length - 1; i >= 0; i--) {
-            const obj = this.objects[i];
-            
-            let hit = false;
-            
-            switch(obj.type) {
-                case 'rectangle':
-                case 'image':
-                    hit = x >= obj.x && x <= obj.x + (obj.width || 50) && 
-                          y >= obj.y && y <= obj.y + (obj.height || 50);
-                    break;
-                    
-                case 'circle':
-                    const dx = x - obj.x;
-                    const dy = y - obj.y;
-                    const distance = Math.sqrt(dx * dx + dy * dy);
-                    hit = distance <= (obj.radius || 25);
-                    break;
-                    
-                case 'line':
-                    // Простая проверка для линии (можно улучшить)
-                    const lineX1 = obj.x1, lineY1 = obj.y1;
-                    const lineX2 = obj.x2, lineY2 = obj.y2;
-                    
-                    // Вычисляем расстояние от точки до линии
-                    const A = x - lineX1;
-                    const B = y - lineY1;
-                    const C = lineX2 - lineX1;
-                    const D = lineY2 - lineY1;
-                    
-                    const dot = A * C + B * D;
-                    const len_sq = C * C + D * D;
-                    let param = len_sq === 0 ? 0 : dot / len_sq;
-                    
-                    let xx, yy;
-                    
-                    if (param < 0) {
-                        xx = lineX1;
-                        yy = lineY1;
-                    } else if (param > 1) {
-                        xx = lineX2;
-                        yy = lineY2;
-                    } else {
-                        xx = lineX1 + param * C;
-                        yy = lineY1 + param * D;
-                    }
-                    
-                    const distanceToLine = Math.sqrt((x - xx) * (x - xx) + (y - yy) * (y - yy));
-                    hit = distanceToLine < 10; // Допуск 10 пикселей
-                    break;
-                    
-                case 'text':
-                    // Приблизительная проверка для текста
-                    const textWidth = obj.text.length * (obj.fontSize || 20) * 0.6;
-                    const textHeight = (obj.fontSize || 20);
-                    hit = x >= obj.x && x <= obj.x + textWidth && 
-                          y >= obj.y - textHeight && y <= obj.y;
-                    break;
-            }
-            
-            if (hit) {
-                this.selectedObject = obj;
-                console.log('Объект выбран:', obj);
-                this.draw();
-                return;
-            }
-        }
-        
-        console.log('Ничего не выбрано');
-        this.draw();
-    },
-
-    deleteSelectedObject() {
-        if (this.selectedObject) {
-            const index = this.objects.indexOf(this.selectedObject);
-            if (index > -1) {
-                this.objects.splice(index, 1);
-                this.selectedObject = null;
-                this.draw();
-                console.log('Объект удален');
-            }
-        }
-    },
-
     setTool(tool) {
         console.log('Инструмент:', tool);
         this.currentTool = tool;
         this.isDrawing = false;
         this.tempObject = null;
-        this.selectedObject = null; // Снимаем выделение при смене инструмента
+        this.selectedObject = null;
+        this.selectedObjectId = null;
         this.draw();
     },
 
     draw() {
         if (!this.ctx) return;
+        
+        console.log('Drawing canvas, objects:', this.objects.length);
         
         // Очистка
         this.ctx.clearRect(0, 0, 1600, 900);
@@ -454,7 +606,7 @@ const Canvas = {
             this.drawObject(obj);
         });
         
-        // Временный объект (при рисовании)
+        // Временный объект
         if (this.tempObject) {
             this.ctx.globalAlpha = 0.5;
             this.drawObject(this.tempObject);
@@ -500,7 +652,6 @@ const Canvas = {
         this.ctx.font = '20px Arial';
         this.ctx.fillText('Tool: ' + this.currentTool, 20, 30);
         
-        // Информация о выделении
         if (this.selectedObject) {
             this.ctx.fillStyle = '#00ff00';
             this.ctx.font = '16px Arial';
@@ -510,10 +661,7 @@ const Canvas = {
 
     drawObject(obj) {
         if (obj.type === 'image' && obj.img) {
-            // Рисуем изображение
             this.ctx.drawImage(obj.img, obj.x, obj.y, obj.width, obj.height);
-            
-            // Рисуем рамку
             this.ctx.strokeStyle = '#000';
             this.ctx.lineWidth = 1;
             this.ctx.strokeRect(obj.x, obj.y, obj.width, obj.height);
@@ -551,7 +699,6 @@ const Canvas = {
                     break;
                     
                 case 'image':
-                    // Заглушка для изображения без загруженного img
                     this.ctx.fillStyle = obj.color || '#8b5cf6';
                     this.ctx.fillRect(obj.x, obj.y, obj.width || 50, obj.height || 50);
                     this.ctx.strokeRect(obj.x, obj.y, obj.width || 50, obj.height || 50);
@@ -561,7 +708,6 @@ const Canvas = {
                     break;
                     
                 default:
-                    // Для обратной совместимости
                     this.ctx.fillRect(obj.x, obj.y, 50, 50);
                     this.ctx.strokeRect(obj.x, obj.y, 50, 50);
             }
@@ -570,3 +716,4 @@ const Canvas = {
 };
 
 window.Canvas = Canvas;
+console.log('✅ Canvas.js загружен');

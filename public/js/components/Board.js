@@ -31,18 +31,12 @@ const Board = {
                 </div>
                 
                 <div class="toolbar">
-                    <button class="tool-btn ${this?.data?.currentTool === 'select' ? 'active' : ''}" 
-                            onclick="Board.setTool('select')">🖱️ Выбрать</button>
-                    <button class="tool-btn ${this?.data?.currentTool === 'text' ? 'active' : ''}" 
-                            onclick="Board.setTool('text')">📝 Текст</button>
-                    <button class="tool-btn ${this?.data?.currentTool === 'image' ? 'active' : ''}" 
-                            onclick="Board.setTool('image')">🖼️ Изображение</button>
-                    <button class="tool-btn ${this?.data?.currentTool === 'rectangle' ? 'active' : ''}" 
-                            onclick="Board.setTool('rectangle')">⬜ Прямоугольник</button>
-                    <button class="tool-btn ${this?.data?.currentTool === 'circle' ? 'active' : ''}" 
-                            onclick="Board.setTool('circle')">⚪ Круг</button>
-                    <button class="tool-btn ${this?.data?.currentTool === 'line' ? 'active' : ''}" 
-                            onclick="Board.setTool('line')">📏 Линия</button>
+                    <button class="tool-btn" data-tool="select" onclick="Board.setTool('select')">🖱️ Выбрать</button>
+                    <button class="tool-btn" data-tool="text" onclick="Board.setTool('text')">📝 Текст</button>
+                    <button class="tool-btn" data-tool="image" onclick="Board.setTool('image')">🖼️ Изображение</button>
+                    <button class="tool-btn" data-tool="rectangle" onclick="Board.setTool('rectangle')">⬜ Прямоугольник</button>
+                    <button class="tool-btn" data-tool="circle" onclick="Board.setTool('circle')">⚪ Круг</button>
+                    <button class="tool-btn" data-tool="line" onclick="Board.setTool('line')">📏 Линия</button>
                 </div>
                 
                 <div class="canvas-wrapper">
@@ -75,10 +69,11 @@ const Board = {
         isOwner: false,
         publicHash: '',
         publicLink: '',
-        currentTool: 'select'
+        currentTool: 'select',
+        objects: [] // Сохраняем объекты из ответа сервера
     },
 
-    isCanvasInitialized: false, // Флаг для отслеживания инициализации canvas
+    isCanvasInitialized: false,
 
     async init(hash) {
         console.log('Board.init()', hash);
@@ -89,7 +84,10 @@ const Board = {
         
         try {
             const response = await API.boards.getBoard(hash);
+            console.log('Board response:', response);
+            
             const boardData = response.board;
+            const objects = response.objects || [];
             
             this.data.boardId = boardData.id;
             this.data.boardName = boardData.name;
@@ -97,6 +95,7 @@ const Board = {
             this.data.isOwner = boardData.owner_id == user.id;
             this.data.publicHash = boardData.public_hash;
             this.data.publicLink = window.location.origin + '/board/' + boardData.public_hash;
+            this.data.objects = objects; // Сохраняем объекты
             
             this.render();
             
@@ -119,10 +118,10 @@ const Board = {
         setTimeout(() => {
             const canvas = document.getElementById('boardCanvas');
             if (canvas && window.Canvas) {
-                console.log('🎨 Инициализация Canvas');
+                console.log('🎨 Инициализация Canvas для доски:', this.data.boardId);
                 
-                // Инициализируем Canvas
-                window.Canvas.init(canvas);
+                // Передаем объекты в Canvas при инициализации
+                window.Canvas.init(canvas, this.data.boardId, this.data.objects);
                 
                 // Устанавливаем текущий инструмент
                 window.Canvas.setTool(this.data.currentTool);
@@ -139,25 +138,18 @@ const Board = {
         console.log('🎯 Board.setTool()', tool);
         this.data.currentTool = tool;
         
-        // Обновляем только активный класс кнопок, не перерисовывая всю страницу
+        // Обновляем активный класс кнопок
         document.querySelectorAll('.tool-btn').forEach(btn => {
             btn.classList.remove('active');
+            if (btn.dataset.tool === tool) {
+                btn.classList.add('active');
+            }
         });
-        
-        // Находим кнопку с соответствующим инструментом и добавляем active класс
-        const activeBtn = Array.from(document.querySelectorAll('.tool-btn')).find(btn => 
-            btn.getAttribute('onclick')?.includes(`'${tool}'`)
-        );
-        if (activeBtn) {
-            activeBtn.classList.add('active');
-        }
         
         // Обновляем инструмент в Canvas
         if (window.Canvas && this.isCanvasInitialized) {
             window.Canvas.setTool(tool);
         }
-        
-        // Не вызываем render()!
     },
 
     showAccessModal() {
@@ -218,4 +210,4 @@ const Board = {
 };
 
 window.Board = Board;
-console.log('✅ Board.js загружен и исправлен');
+console.log('✅ Board.js загружен');

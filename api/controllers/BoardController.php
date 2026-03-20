@@ -19,10 +19,6 @@ class BoardController {
     }
 
     public function create($data) {
-        // Включаем отображение ошибок
-        error_reporting(E_ALL);
-        ini_set('display_errors', 1);
-        
         try {
             $user = AuthMiddleware::authenticate();
             
@@ -91,6 +87,32 @@ class BoardController {
                 'objects' => $objects
             ]);
         } catch(Exception $e) {
+            http_response_code(500);
+            echo json_encode(['error' => $e->getMessage()]);
+        }
+    }
+
+    public function getBoardByHash($hash) {
+        try {
+            header('Content-Type: application/json');
+            error_log("Getting board by hash: " . $hash);
+            
+            $board = $this->board->getByHash($hash);
+            
+            if(!$board) {
+                http_response_code(404);
+                echo json_encode(['error' => 'Board not found']);
+                return;
+            }
+            
+            $objects = $this->boardObject->getByBoard($board['id']);
+            
+            echo json_encode([
+                'board' => $board,
+                'objects' => $objects
+            ]);
+        } catch(Exception $e) {
+            error_log("Error in getBoardByHash: " . $e->getMessage());
             http_response_code(500);
             echo json_encode(['error' => $e->getMessage()]);
         }

@@ -15,7 +15,7 @@ const API = {
         const url = this.baseUrl + endpoint;
         const headers = {
             'Content-Type': 'application/json',
-            'ClientId': 'your_login_here' // замените на ваш логин
+            'ClientId': 'your_login_here' 
         };
 
         if(this.token) {
@@ -36,6 +36,14 @@ const API = {
             const response = await fetch(url, config);
             
             console.log('Response status:', response.status);
+            
+            // Проверяем, не HTML ли это
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('text/html')) {
+                const text = await response.text();
+                console.error('Received HTML instead of JSON:', text.substring(0, 200));
+                throw { status: response.status, errors: { general: 'Server returned HTML' } };
+            }
             
             if(response.status === 401) {
                 localStorage.removeItem('token');
@@ -112,6 +120,46 @@ const API = {
             return API.request(`/boards/${boardId}/like`, {
                 method: 'POST'
             });
+        },
+
+        // Методы для работы с объектами на доске
+        createBoardObject: (boardId, data) => {
+            console.log('Creating object for board:', boardId, data);
+            return API.request(`/boards/${boardId}/objects`, {
+                method: 'POST',
+                body: JSON.stringify(data)
+            });
+        },
+
+        getBoardObjects: (boardId) => {
+            console.log('Getting objects for board:', boardId);
+            return API.request(`/boards/${boardId}/objects`);
+        },
+
+        updateBoardObject: (boardId, objectId, data) => {
+            console.log('Updating object:', objectId, 'for board:', boardId);
+            return API.request(`/boards/${boardId}/objects/${objectId}`, {
+                method: 'PUT',
+                body: JSON.stringify(data)
+            });
+        },
+
+        deleteBoardObject: (boardId, objectId) => {
+            console.log('Deleting object:', objectId, 'from board:', boardId);
+            return API.request(`/boards/${boardId}/objects/${objectId}`, {
+                method: 'DELETE'
+            });
+        },
+
+        bulkUpdateBoardObjects: (boardId, objects) => {
+            console.log('Bulk update objects for board:', boardId);
+            return API.request(`/boards/${boardId}/objects/bulk`, {
+                method: 'POST',
+                body: JSON.stringify({ objects })
+            });
         }
     }
 };
+
+window.API = API;
+console.log('✅ API.js загружен');

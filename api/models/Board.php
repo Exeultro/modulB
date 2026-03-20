@@ -42,6 +42,25 @@ class Board {
         }
     }
 
+    // Добавьте этот метод
+    public function getById($id) {
+        try {
+            $query = "SELECT b.*, u.name as owner_name 
+                      FROM " . $this->table . " b
+                      LEFT JOIN users u ON b.owner_id = u.id
+                      WHERE b.id = :id";
+            
+            $stmt = $this->conn->prepare($query);
+            $stmt->bindParam(':id', $id);
+            $stmt->execute();
+            
+            return $stmt->fetch(PDO::FETCH_ASSOC);
+        } catch(PDOException $e) {
+            error_log("getById error: " . $e->getMessage());
+            throw $e;
+        }
+    }
+
     public function getUserBoards($user_id) {
         try {
             $query = "SELECT DISTINCT b.*, u.name as owner_name, 
@@ -64,23 +83,31 @@ class Board {
     }
 
     public function getPublicBoards() {
-        try {
-            $query = "SELECT b.*, u.name as owner_name,
-                      COALESCE((SELECT COUNT(*) FROM likes WHERE board_id = b.id), 0) as likes_count
-                      FROM " . $this->table . " b
-                      LEFT JOIN users u ON b.owner_id = u.id
-                      WHERE b.is_public = true
-                      ORDER BY b.likes_count DESC, b.created_at DESC";
-            
-            $stmt = $this->conn->prepare($query);
-            $stmt->execute();
-            
-            return $stmt->fetchAll(PDO::FETCH_ASSOC);
-        } catch(PDOException $e) {
-            error_log("getPublicBoards error: " . $e->getMessage());
-            throw $e;
+    try {
+        $query = "SELECT b.*, u.name as owner_name,
+                  COALESCE((SELECT COUNT(*) FROM likes WHERE board_id = b.id), 0) as likes_count
+                  FROM " . $this->table . " b
+                  LEFT JOIN users u ON b.owner_id = u.id
+                  WHERE b.is_public = true
+                  ORDER BY b.likes_count DESC, b.created_at DESC";
+        
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute();
+        
+        $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Логируем для отладки
+        error_log("Public boards count: " . count($result));
+        foreach ($result as $board) {
+            error_log("Public board: " . $board['name'] . " (is_public: " . $board['is_public'] . ")");
         }
+        
+        return $result;
+    } catch(PDOException $e) {
+        error_log("getPublicBoards error: " . $e->getMessage());
+        throw $e;
     }
+}
 
     public function getByHash($hash) {
         try {
