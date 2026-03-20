@@ -69,6 +69,7 @@ class AuthController {
         
         if(!empty($errors)) {
             http_response_code(400);
+            header('Content-Type: application/json');
             echo json_encode(['errors' => $errors]);
             return;
         }
@@ -79,6 +80,7 @@ class AuthController {
         if($this->user->login()) {
             $token = AuthMiddleware::generateToken($this->user->id, $this->user->email);
             
+            header('Content-Type: application/json');
             echo json_encode([
                 'token' => $token,
                 'user' => [
@@ -89,7 +91,9 @@ class AuthController {
             ]);
         } else {
             http_response_code(401);
-            echo json_encode(['errors' => ['password' => 'Invalid credentials']]);
+            header('Content-Type: application/json');
+            // Более конкретная ошибка
+            echo json_encode(['errors' => ['password' => 'Неверный email или пароль']]);
         }
     }
 }

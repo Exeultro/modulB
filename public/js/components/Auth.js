@@ -6,37 +6,107 @@ const Auth = {
             name: '',
             password: ''
         },
-        errors: {}
+        errors: {},
+        isLoading: false
     },
 
     init() {
         console.log('Auth.init()');
-        // Определяем режим по URL
         this.data.isLogin = window.location.pathname !== '/register';
         this.data.form = { email: '', name: '', password: '' };
         this.data.errors = {};
+        this.data.isLoading = false;
         this.render();
     },
 
     handleInput(field, value) {
+        // Обновляем данные
         this.data.form[field] = value;
         
-        // Очищаем ошибку при вводе
+        // Очищаем ошибку для этого поля
         if (this.data.errors[field]) {
             delete this.data.errors[field];
-            // Визуально убираем класс ошибки
-            const input = document.getElementById(field);
-            if (input) {
-                input.classList.remove('error');
-            }
+            this.updateFieldError(field, null);
         }
         
-        // Очищаем общую ошибку при любом вводе
+        // Очищаем общую ошибку
         if (this.data.errors.general) {
             delete this.data.errors.general;
             const generalError = document.querySelector('.general-error');
-            if (generalError) {
-                generalError.remove();
+            if (generalError) generalError.remove();
+        }
+        
+        // Обновляем визуальное состояние поля
+        const input = document.getElementById(field);
+        if (input) {
+            if (this.data.errors[field]) {
+                input.classList.add('error');
+            } else {
+                input.classList.remove('error');
+            }
+        }
+    },
+
+    updateFieldError(field, errorMessage) {
+        const errorContainer = document.getElementById(`${field}-error`);
+        if (errorContainer) {
+            if (errorMessage) {
+                errorContainer.textContent = `⚠️ ${errorMessage}`;
+                errorContainer.style.display = 'block';
+            } else {
+                errorContainer.style.display = 'none';
+                errorContainer.textContent = '';
+            }
+        }
+        
+        const input = document.getElementById(field);
+        if (input) {
+            if (errorMessage) {
+                input.classList.add('error');
+            } else {
+                input.classList.remove('error');
+            }
+        }
+    },
+
+    updateGeneralError(message) {
+        let generalError = document.querySelector('.general-error');
+        if (!generalError) {
+            const form = document.querySelector('form');
+            if (form) {
+                generalError = document.createElement('div');
+                generalError.className = 'error-message general-error';
+                form.insertBefore(generalError, form.firstChild);
+            }
+        }
+        
+        if (generalError) {
+            if (message) {
+                generalError.textContent = `❌ ${message}`;
+                generalError.style.display = 'block';
+            } else {
+                generalError.style.display = 'none';
+            }
+        }
+    },
+
+    updateSuccessMessage(message) {
+        let successMsg = document.querySelector('.success-message');
+        if (!successMsg) {
+            const form = document.querySelector('form');
+            if (form) {
+                successMsg = document.createElement('div');
+                successMsg.className = 'success-message';
+                form.insertBefore(successMsg, form.firstChild);
+            }
+        }
+        
+        if (successMsg) {
+            if (message) {
+                successMsg.textContent = message;
+                successMsg.style.display = 'block';
+            } else {
+                successMsg.style.display = 'none';
             }
         }
     },
@@ -48,8 +118,8 @@ const Auth = {
         this.data.isLogin = !this.data.isLogin;
         this.data.form = { email: '', name: '', password: '' };
         this.data.errors = {};
+        this.data.isLoading = false;
         
-        // Обновляем URL без перезагрузки
         const newPath = this.data.isLogin ? '/login' : '/register';
         window.history.pushState({}, '', newPath);
         
@@ -59,14 +129,12 @@ const Auth = {
     validate() {
         const errors = {};
         
-        // Валидация email
         if (!this.data.form.email) {
             errors.email = 'Email обязателен';
         } else if (!this.data.form.email.includes('@') || !this.data.form.email.includes('.')) {
             errors.email = 'Введите корректный email (пример: user@mail.com)';
         }
 
-        // Валидация имени (только для регистрации)
         if (!this.data.isLogin) {
             if (!this.data.form.name) {
                 errors.name = 'Имя обязательно';
@@ -77,10 +145,9 @@ const Auth = {
             }
         }
 
-        // Валидация пароля
         if (!this.data.form.password) {
             errors.password = 'Пароль обязателен';
-        } else if (this.data.form.password.length < 4) { // Для тестирования уменьшил до 4
+        } else if (this.data.form.password.length < 4) {
             errors.password = 'Пароль должен быть минимум 4 символа';
         }
 
@@ -88,7 +155,6 @@ const Auth = {
     },
 
     async submit(e) {
-        // Предотвращаем отправку формы и перезагрузку страницы
         if (e) {
             e.preventDefault();
             e.stopPropagation();
@@ -96,20 +162,25 @@ const Auth = {
         
         console.log('Auth.submit()', this.data.form);
         
-        // Валидация
         const errors = this.validate();
         
         if (Object.keys(errors).length > 0) {
             console.log('Validation errors:', errors);
             this.data.errors = errors;
-            this.render(); // Перерисовываем для показа ошибок
+            
+            // Показываем ошибки без перерисовки
+            Object.keys(errors).forEach(field => {
+                this.updateFieldError(field, errors[field]);
+            });
+            
             return;
         }
         
-        // Показываем индикатор загрузки
+        if (this.data.isLoading) return;
+        
+        this.data.isLoading = true;
         const submitBtn = document.querySelector('.btn-primary');
         if (submitBtn) {
-            const originalText = submitBtn.textContent;
             submitBtn.textContent = 'Загрузка...';
             submitBtn.disabled = true;
         }
@@ -127,7 +198,6 @@ const Auth = {
                 if (response && response.token) {
                     API.setToken(response.token);
                     localStorage.setItem('user', JSON.stringify(response.user));
-                    // Успешный вход - переходим на доски
                     Router.navigate('/boards');
                 } else {
                     throw { errors: { general: 'Неверный ответ от сервера' } };
@@ -142,48 +212,72 @@ const Auth = {
                 
                 console.log('Registration response:', response);
                 
-                // Успешная регистрация
                 this.data.isLogin = true;
                 this.data.form = { email: this.data.form.email, name: '', password: '' };
-                this.data.errors = { success: '✅ Регистрация успешна! Теперь войдите.' };
+                this.data.errors = {};
+                this.data.isLoading = false;
                 
-                // Обновляем URL
                 window.history.pushState({}, '', '/login');
                 this.render();
+                this.updateSuccessMessage('✅ Регистрация успешна! Теперь войдите.');
             }
         } catch(error) {
             console.error('Auth error:', error);
             
-            // Возвращаем кнопку в исходное состояние
+            if (error.errors) {
+                this.data.errors = error.errors;
+                
+                // Показываем ошибки
+                Object.keys(error.errors).forEach(field => {
+                    this.updateFieldError(field, error.errors[field]);
+                });
+                
+                if (error.errors.general) {
+                    this.updateGeneralError(error.errors.general);
+                }
+            } else if (error.message) {
+                this.updateGeneralError(error.message);
+            } else {
+                this.updateGeneralError('Произошла ошибка при подключении к серверу');
+            }
+            
+            this.data.isLoading = false;
+            
             if (submitBtn) {
                 submitBtn.textContent = this.data.isLogin ? 'Войти' : 'Зарегистрироваться';
                 submitBtn.disabled = false;
             }
             
-            // Обработка ошибок от сервера
-            if (error.errors) {
-                this.data.errors = error.errors;
-            } else if (error.message) {
-                this.data.errors = { general: error.message };
-            } else {
-                this.data.errors = { general: 'Произошла ошибка при подключении к серверу' };
-            }
-            
-            this.render();
+            // Фокусируемся на поле с ошибкой
+            setTimeout(() => {
+                if (this.data.errors.email) {
+                    const emailInput = document.getElementById('email');
+                    if (emailInput) emailInput.focus();
+                } else if (this.data.errors.password) {
+                    const passwordInput = document.getElementById('password');
+                    if (passwordInput) passwordInput.focus();
+                } else if (this.data.errors.name) {
+                    const nameInput = document.getElementById('name');
+                    if (nameInput) nameInput.focus();
+                }
+            }, 100);
         }
     },
 
+    escapeHtml(str) {
+        if (!str) return '';
+        return str
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    },
+
     render() {
-        console.log('Auth.render()', this.data);
-        
         const html = `
             <div class="auth-container">
                 <h2>${this.data.isLogin ? 'Вход' : 'Регистрация'}</h2>
-                
-                ${this.data.errors.general ? 
-                    `<div class="error-message general-error">❌ ${this.data.errors.general}</div>` : ''}
-                ${this.data.errors.success ? 
-                    `<div class="success-message">${this.data.errors.success}</div>` : ''}
                 
                 <form onsubmit="Auth.submit(event); return false;">
                     <div class="form-group">
@@ -192,14 +286,13 @@ const Auth = {
                             type="email" 
                             id="email" 
                             name="email"
-                            class="form-control ${this.data.errors.email ? 'error' : ''}" 
-                            value="${this.data.form.email || ''}" 
+                            class="form-control" 
+                            value="${this.escapeHtml(this.data.form.email || '')}" 
                             oninput="Auth.handleInput('email', this.value)"
                             placeholder="example@mail.com"
-                            required
+                            ${this.data.isLoading ? 'disabled' : ''}
                         >
-                        ${this.data.errors.email ? 
-                            `<div class="error-message field-error">⚠️ ${this.data.errors.email}</div>` : ''}
+                        <div id="email-error" class="error-message field-error" style="display: none;"></div>
                     </div>
                     
                     ${!this.data.isLogin ? `
@@ -209,14 +302,13 @@ const Auth = {
                                 type="text" 
                                 id="name" 
                                 name="name"
-                                class="form-control ${this.data.errors.name ? 'error' : ''}" 
-                                value="${this.data.form.name || ''}" 
+                                class="form-control" 
+                                value="${this.escapeHtml(this.data.form.name || '')}" 
                                 oninput="Auth.handleInput('name', this.value)"
                                 placeholder="John"
-                                required
+                                ${this.data.isLoading ? 'disabled' : ''}
                             >
-                            ${this.data.errors.name ? 
-                                `<div class="error-message field-error">⚠️ ${this.data.errors.name}</div>` : ''}
+                            <div id="name-error" class="error-message field-error" style="display: none;"></div>
                         </div>
                     ` : ''}
                     
@@ -226,23 +318,22 @@ const Auth = {
                             type="password" 
                             id="password" 
                             name="password"
-                            class="form-control ${this.data.errors.password ? 'error' : ''}" 
-                            value="${this.data.form.password || ''}" 
+                            class="form-control" 
+                            value="${this.escapeHtml(this.data.form.password || '')}" 
                             oninput="Auth.handleInput('password', this.value)"
                             placeholder="********"
-                            required
+                            ${this.data.isLoading ? 'disabled' : ''}
                         >
-                        ${this.data.errors.password ? 
-                            `<div class="error-message field-error">⚠️ ${this.data.errors.password}</div>` : ''}
+                        <div id="password-error" class="error-message field-error" style="display: none;"></div>
                     </div>
                     
-                    <button type="submit" class="btn btn-primary">
-                        ${this.data.isLogin ? 'Войти' : 'Зарегистрироваться'}
+                    <button type="submit" class="btn btn-primary" ${this.data.isLoading ? 'disabled' : ''}>
+                        ${this.data.isLoading ? 'Загрузка...' : (this.data.isLogin ? 'Войти' : 'Зарегистрироваться')}
                     </button>
                 </form>
                 
                 <div class="auth-link">
-                    <a href="#" onclick="Auth.toggleMode(event); return false;">
+                    <a href="#" onclick="Auth.toggleMode(event); return false;" ${this.data.isLoading ? 'style="pointer-events: none; opacity: 0.5;"' : ''}>
                         ${this.data.isLogin ? 
                             '❓ Нужна учетная запись? Зарегистрироваться' : 
                             '✅ Уже есть учетная запись? Войти'}
@@ -257,16 +348,23 @@ const Auth = {
         } else {
             console.error('Element #app not found');
         }
+        
+        // После рендера показываем сохраненные ошибки
+        Object.keys(this.data.errors).forEach(field => {
+            if (field !== 'general' && field !== 'success') {
+                this.updateFieldError(field, this.data.errors[field]);
+            }
+        });
+        
+        if (this.data.errors.general) {
+            this.updateGeneralError(this.data.errors.general);
+        }
+        
+        if (this.data.errors.success) {
+            this.updateSuccessMessage(this.data.errors.success);
+            delete this.data.errors.success;
+        }
     }
 };
 
-// Инициализация при загрузке
-document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM loaded, path:', window.location.pathname);
-    if (window.location.pathname === '/login' || window.location.pathname === '/register') {
-        Auth.init();
-    }
-});
-
-// Для навигации через Router
 window.Auth = Auth;

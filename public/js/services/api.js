@@ -37,24 +37,76 @@ const API = {
             
             console.log('Response status:', response.status);
             
-            // Проверяем, не HTML ли это
+            // Проверяем content-type
             const contentType = response.headers.get('content-type');
+            
+            // Специальная обработка для 401 (неавторизован)
+            if(response.status === 401) {
+                // Проверяем, не пытаемся ли мы залогиниться
+                const isLoginRequest = endpoint === '/auth/login';
+                
+                if (!isLoginRequest) {
+                    // Если это не запрос логина, очищаем токен и делаем редирект
+                    this.setToken(null);
+                    localStorage.removeItem('user');
+                    window.location.href = '/login';
+                    throw { status: 401, errors: { auth: 'Требуется авторизация' } };
+                } else {
+                    // Для запроса логина - пытаемся получить JSON ошибку
+                    let errorMessage = 'Неверный email или пароль';
+                    
+                    // Пытаемся получить JSON даже если статус 401
+                    try {
+                        if (contentType && contentType.includes('application/json')) {
+                            const data = await response.json();
+                            if (data.errors && data.errors.password) {
+                                errorMessage = data.errors.password;
+                            } else if (data.errors && data.errors.email) {
+                                errorMessage = data.errors.email;
+                            } else if (data.error) {
+                                errorMessage = data.error;
+                            }
+                        } else {
+                            // Если не JSON, пробуем прочитать текст
+                            const text = await response.text();
+                            console.log('Non-JSON response:', text);
+                        }
+                    } catch (e) {
+                        console.error('Failed to parse error response:', e);
+                    }
+                    
+                    throw { 
+                        status: 401, 
+                        errors: { password: errorMessage }
+                    };
+                }
+            }
+            
+            // Обработка HTML ответов (ошибки сервера)
             if (contentType && contentType.includes('text/html')) {
                 const text = await response.text();
                 console.error('Received HTML instead of JSON:', text.substring(0, 200));
-                throw { status: response.status, errors: { general: 'Server returned HTML' } };
+                throw { 
+                    status: response.status, 
+                    errors: { general: `Сервер вернул ошибку ${response.status}` } 
+                };
             }
             
-            if(response.status === 401) {
-                localStorage.removeItem('token');
-                localStorage.removeItem('user');
-                window.location.href = '/login';
-                throw { status: 401, errors: { auth: 'Требуется авторизация' } };
+            // Парсим JSON ответ
+            let data;
+            try {
+                data = await response.json();
+            } catch (e) {
+                console.error('Failed to parse JSON:', e);
+                throw { 
+                    status: response.status, 
+                    errors: { general: 'Неверный формат ответа от сервера' } 
+                };
             }
             
-            const data = await response.json();
             console.log('Response data:', data);
 
+            // Проверяем успешность ответа
             if(!response.ok) {
                 throw {
                     status: response.status,
@@ -65,6 +117,7 @@ const API = {
             return data;
         } catch(error) {
             console.error('API Error:', error);
+            // Перебрасываем ошибку для обработки в компонентах
             throw error;
         }
     },
