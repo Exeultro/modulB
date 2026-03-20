@@ -1,0 +1,14 @@
+{
+    "name": "modulb",
+    "version": "1.0.0",
+    "description": "Interactive Boards Application",
+    "scripts": {
+        "start": "php -S localhost:8000",
+        "websocket": "php api/websocket/server.php"
+    },
+    "dependencies": {
+        "ratchet/pawl": "^0.4.1",
+        "ratchet/rfc6455": "^0.3.1",
+        "cboden/ratchet": "^0.4.4"
+    }
+}

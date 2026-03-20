@@ -1,0 +1,86 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+        <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Test</title>
+</head>
+<body>
+    <h1>Тест API</h1>
+    
+    <div>
+        <h3>Регистрация</h3>
+        <input type="email" id="regEmail" placeholder="Email" value="test@test.com"><br>
+        <input type="text" id="regName" placeholder="Name" value="testuser"><br>
+        <input type="password" id="regPass" placeholder="Password" value="Test123!@#"><br>
+        <button onclick="testRegister()">Зарегистрироваться</button>
+    </div>
+    
+    <div>
+        <h3>Вход</h3>
+        <input type="email" id="loginEmail" placeholder="Email" value="test@test.com"><br>
+        <input type="password" id="loginPass" placeholder="Password" value="Test123!@#"><br>
+        <button onclick="testLogin()">Войти</button>
+    </div>
+    
+    <div id="result"></div>
+
+    <script>
+        async function testRegister() {
+            const data = {
+                email: document.getElementById('regEmail').value,
+                name: document.getElementById('regName').value,
+                password: document.getElementById('regPass').value
+            };
+            
+            try {
+                const response = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'ClientId': 'your_login'
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                document.getElementById('result').innerHTML = 
+                    '<pre>Регистрация: ' + JSON.stringify(result, null, 2) + '</pre>';
+            } catch(e) {
+                document.getElementById('result').innerHTML = 'Ошибка: ' + e;
+            }
+        }
+        
+        async function testLogin() {
+            const data = {
+                email: document.getElementById('loginEmail').value,
+                password: document.getElementById('loginPass').value
+            };
+            
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'ClientId': 'your_login'
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                document.getElementById('result').innerHTML = 
+                    '<pre>Вход: ' + JSON.stringify(result, null, 2) + '</pre>';
+                
+                if (result.token) {
+                    localStorage.setItem('token', result.token);
+                    localStorage.setItem('user', JSON.stringify(result.user));
+                    alert('Токен сохранен! Теперь можно перейти на /boards');
+                }
+            } catch(e) {
+                document.getElementById('result').innerHTML = 'Ошибка: ' + e;
+            }
+        }
+    </script>
+</body>
+</html>

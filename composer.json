@@ -1,0 +1,11 @@
+{
+    "require": {
+        "cboden/ratchet": "^0.4.4"
+    },
+    "repositories": {
+        "packagist": {
+            "type": "composer",
+            "url": "http://repo.packagist.org"
+        }
+    }
+}

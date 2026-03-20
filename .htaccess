@@ -1,0 +1,13 @@
+RewriteEngine On
+RewriteBase /
+
+# Если запрос к API
+RewriteCond %{REQUEST_URI} ^/api/
+RewriteRule ^api/(.*)$ api/index.php [QSA,L]
+
+# Если запрос к существующему файлу - отдаем его
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteRule ^ - [L]
+
+# Все остальное перенаправляем на index.html
+RewriteRule ^(.*)$ public/index.html [QSA,L]
